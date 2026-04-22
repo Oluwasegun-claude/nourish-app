@@ -1,7 +1,9 @@
-// Vercel Serverless Function — proxies requests to Google Gemini API (FREE tier)
+// Vercel Serverless Function — proxies requests to Groq API (FREE tier)
 //
 // Setup: In Vercel → Settings → Environment Variables, add:
-//   GEMINI_API_KEY = your free key from https://aistudio.google.com/apikey
+//   GROQ_API_KEY = your free key from https://console.groq.com
+//
+// Free tier: 30 req/min, 14,400 req/day — very generous
 
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -11,83 +13,80 @@ export default async function handler(req, res) {
   if (req.method === "OPTIONS") return res.status(200).end();
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
-  const apiKey = process.env.GEMINI_API_KEY;
+  const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey) {
     return res.status(500).json({
-      error: "GEMINI_API_KEY not configured. Get a FREE key at https://aistudio.google.com/apikey",
+      error: "GROQ_API_KEY not configured. Get a FREE key at https://console.groq.com then add it in Vercel → Settings → Environment Variables.",
     });
   }
 
   try {
     const { messages, max_tokens = 1000 } = req.body;
 
-    // Convert Anthropic-style messages to Gemini format
-    const geminiContents = messages.map((msg) => {
-      const parts = [];
+    // Detect if any message contains an image
+    const hasImage = messages.some(
+      (m) => Array.isArray(m.content) && m.content.some((b) => b.type === "image")
+    );
+
+    // Pick model: vision model for images, fast model for text
+    const model = hasImage ? "llama-3.2-11b-vision-preview" : "llama-3.3-70b-versatile";
+
+    // Convert Anthropic-style messages to OpenAI/Groq format
+    const groqMessages = messages.map((msg) => {
       if (typeof msg.content === "string") {
-        parts.push({ text: msg.content });
-      } else if (Array.isArray(msg.content)) {
-        for (const block of msg.content) {
-          if (block.type === "text") {
-            parts.push({ text: block.text });
-          } else if (block.type === "image") {
-            parts.push({
-              inline_data: {
-                mime_type: block.source.media_type,
-                data: block.source.data,
-              },
-            });
-          }
-        }
-      }
-      return { role: msg.role === "assistant" ? "model" : "user", parts };
-    });
-
-    const model = "gemini-2.0-flash";
-    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-
-    // Retry up to 3 times with backoff for rate limits
-    let lastError = null;
-    for (let attempt = 0; attempt < 3; attempt++) {
-      if (attempt > 0) {
-        await new Promise(r => setTimeout(r, 2000 * attempt)); // 2s, 4s backoff
+        return { role: msg.role, content: msg.content };
       }
 
-      try {
-        const response = await fetch(geminiUrl, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            contents: geminiContents,
-            generationConfig: { maxOutputTokens: max_tokens, temperature: 0.7 },
-          }),
-        });
-
-        const data = await response.json();
-
-        if (response.ok && data.candidates?.[0]?.content?.parts?.[0]?.text) {
-          return res.status(200).json({
-            content: [{ type: "text", text: data.candidates[0].content.parts[0].text }],
-            model,
-            role: "assistant",
+      // Multi-part content (text + images)
+      const parts = [];
+      for (const block of msg.content) {
+        if (block.type === "text") {
+          parts.push({ type: "text", text: block.text });
+        } else if (block.type === "image") {
+          parts.push({
+            type: "image_url",
+            image_url: {
+              url: `data:${block.source.media_type};base64,${block.source.data}`,
+            },
           });
         }
-
-        if (response.status === 429) {
-          lastError = "Rate limited — retrying...";
-          continue; // retry
-        }
-
-        // Non-retryable error
-        lastError = data.error?.message || `Error ${response.status}`;
-        break;
-      } catch (fetchErr) {
-        lastError = fetchErr.message;
       }
+      return { role: msg.role, content: parts };
+    });
+
+    const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        messages: groqMessages,
+        max_tokens,
+        temperature: 0.7,
+      }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      console.error("Groq error:", JSON.stringify(data));
+      return res.status(response.status).json({
+        error: data.error?.message || `Groq API error: ${response.status}`,
+      });
     }
 
-    return res.status(500).json({ error: lastError || "AI request failed" });
+    // Convert Groq/OpenAI response → Anthropic-compatible format
+    const text = data.choices?.[0]?.message?.content || "";
+
+    return res.status(200).json({
+      content: [{ type: "text", text }],
+      model,
+      role: "assistant",
+    });
   } catch (err) {
+    console.error("Proxy error:", err);
     return res.status(500).json({ error: "Proxy error: " + err.message });
   }
 }
