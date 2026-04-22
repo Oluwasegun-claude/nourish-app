@@ -584,6 +584,13 @@ export default function App() {
   const [showWt,setSW]=useState(false);
   const [newWt,setNW]=useState("");
   const [showCheckin,setSCI]=useState(false);
+  const [editProfile,setEP]=useState(false);
+  const [editData,setED]=useState(null);
+  const [selectedCuisine,setSC]=useState(null);
+  const [workoutCals,setWC]=useState("");
+  const [showWorkout,setShowWorkout]=useState(false);
+  const [manualSteps,setManualSteps]=useState("");
+  const [showStepInput,setShowStepInput]=useState(false);
 
   // log form
   const [uploadImg,setUI]=useState(null);
@@ -629,7 +636,9 @@ export default function App() {
   const fastEndStr=fast.start?new Date(fast.start+fast.window*3600000).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}):"--:--";
   const eatEndStr=fast.start?new Date(fast.start+(fast.window+fast.eat)*3600000).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}):"--:--";
   const cuisineKey=profile?.cuisineKey||"nigerian";
-  const cuisine=CUISINES[cuisineKey]||CUISINES.nigerian;
+  const activeCuisineKey=selectedCuisine||cuisineKey;
+  const cuisine=CUISINES[activeCuisineKey]||CUISINES.nigerian;
+  const defaultCuisine=CUISINES[cuisineKey]||CUISINES.nigerian;
   const wUnit=profile?.weightUnit||"kg";
 
   const callProxy=async(messages,maxTokens=1000)=>{
@@ -875,14 +884,14 @@ export default function App() {
       {/* LOG */}
       {tab==="log"&&<>
         <Big style={{fontSize:36,marginBottom:4}}>Log Food</Big>
-        <div style={{fontSize:13,color:C.muted2,marginBottom:14}}>Photo, voice, {cuisine.flag} {Object.values(CUISINES).find(c=>c===cuisine)?.label.split(" ")[1]||"local"} DB, or manual</div>
+        <div style={{fontSize:13,color:C.muted2,marginBottom:14}}>Photo, voice, local DB, or manual</div>
 
         <div style={{display:"flex",gap:6,marginBottom:12,overflowX:"auto",paddingBottom:2}}>
           {["Breakfast","Lunch","Dinner","Snack","Post-workout"].map(m=><button key={m} onClick={()=>setMT(m)} style={{background:mealType===m?C.white:C.card2,color:mealType===m?"#000":C.muted2,border:`1px solid ${mealType===m?C.white:C.border}`,borderRadius:99,padding:"6px 14px",fontSize:12,fontWeight:700,whiteSpace:"nowrap",flexShrink:0}}>{m}</button>)}
         </div>
 
         <div style={{display:"flex",gap:6,marginBottom:14,overflowX:"auto",paddingBottom:2}}>
-          {[["photo","📸 Photo"],["voice","🎙️ Voice"],["cuisine",`${cuisine.flag} Local DB`],["manual","✏️ Manual"]].map(([k,l])=><button key={k} onClick={()=>setLM(k)} style={{background:logMode===k?C.accent:C.card2,color:logMode===k?C.white:C.muted2,border:`1px solid ${logMode===k?C.accent:C.border}`,borderRadius:99,padding:"7px 14px",fontSize:12,fontWeight:700,whiteSpace:"nowrap",flexShrink:0}}>{l}</button>)}
+          {[["photo","📸 Photo"],["voice","🎙️ Voice"],["cuisine",`${defaultCuisine.flag} Food DB`],["manual","✏️ Manual"]].map(([k,l])=><button key={k} onClick={()=>setLM(k)} style={{background:logMode===k?C.accent:C.card2,color:logMode===k?C.white:C.muted2,border:`1px solid ${logMode===k?C.accent:C.border}`,borderRadius:99,padding:"7px 14px",fontSize:12,fontWeight:700,whiteSpace:"nowrap",flexShrink:0}}>{l}</button>)}
         </div>
 
         {logMode==="photo"&&<Card>
@@ -911,6 +920,9 @@ export default function App() {
 
         {logMode==="cuisine"&&<Card>
           <Label>{cuisine.flag} {cuisine.label} Foods</Label>
+          <div style={{display:"flex",gap:6,marginBottom:10,overflowX:"auto",paddingBottom:2}}>
+            {Object.entries(CUISINES).map(([key,c])=><button key={key} onClick={()=>setSC(key)} style={{background:activeCuisineKey===key?C.accent:C.card2,color:activeCuisineKey===key?C.white:C.muted2,border:`1px solid ${activeCuisineKey===key?C.accent:C.border}`,borderRadius:99,padding:"5px 12px",fontSize:11,fontWeight:700,whiteSpace:"nowrap",flexShrink:0}}>{c.flag} {c.label.split(" ")[1]||c.label}</button>)}
+          </div>
           <input value={nigerSearch} onChange={e=>setNS(e.target.value)} placeholder={`Search ${cuisine.foods.length} dishes...`} style={{width:"100%",background:C.card2,border:`1px solid ${C.border}`,borderRadius:10,padding:"11px 14px",color:C.text,fontSize:14,marginBottom:10}}/>
           <div style={{maxHeight:420,overflowY:"auto"}}>
             {nigerFiltered.map(f=><button key={f.name} onClick={()=>addFood({name:f.name,calories:f.cal,protein:f.p,carbs:f.c,fat:f.f,fibre:f.fi,sodium:0,sugar:0,isProcessed:false,image:null})} style={{width:"100%",background:C.card2,border:`1px solid ${C.border}`,borderRadius:10,padding:"12px 14px",marginBottom:6,display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer",color:C.text,textAlign:"left"}}>
@@ -996,24 +1008,83 @@ export default function App() {
           </div>}
         </Card>
 
-        {/* Connector info */}
+        {/* Connector actions */}
         <Card>
           <Label>App Connectors</Label>
-          {[
-            {icon:"🏃",name:"Step Counter",status:"Manual",desc:"Tap +1000 steps on Home tab. Auto-count requires a native app."},
-            {icon:"📱",name:"Google Fit",status:"Coming soon",desc:"OAuth integration — available when app moves to native (React Native)."},
-            {icon:"🍎",name:"Apple Health",status:"Native only",desc:"Requires iOS native app. Data can be exported and imported manually."},
-            {icon:"🏋️",name:"Fitness Tracker",status:"Manual",desc:"Log workout calories burned manually in the Log tab."},
-          ].map(({icon,name,status,desc})=><div key={name} style={{display:"flex",gap:12,padding:"10px 0",borderBottom:`1px solid ${C.border}`}}>
-            <div style={{fontSize:20,flexShrink:0}}>{icon}</div>
-            <div style={{flex:1}}>
-              <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:2}}>
-                <div style={{fontWeight:600,fontSize:13}}>{name}</div>
-                <Pill color={status==="Manual"?C.yellow:status==="Coming soon"?C.accent:C.muted2} sm>{status}</Pill>
+
+          {/* Step Counter */}
+          <div style={{padding:"12px 0",borderBottom:`1px solid ${C.border}`}}>
+            <div style={{display:"flex",gap:12,alignItems:"center",marginBottom:8}}>
+              <div style={{fontSize:20}}>🏃</div>
+              <div style={{flex:1}}>
+                <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:2}}>
+                  <div style={{fontWeight:600,fontSize:13}}>Step Counter</div>
+                  <Pill color={C.green} sm>Active</Pill>
+                </div>
+                <div style={{fontSize:11,color:C.muted2}}>Today: {steps.toLocaleString()} steps</div>
               </div>
-              <div style={{fontSize:11,color:C.muted2,lineHeight:1.5}}>{desc}</div>
             </div>
-          </div>)}
+            {showStepInput?<div style={{display:"flex",gap:8}}>
+              <input value={manualSteps} onChange={e=>setManualSteps(e.target.value)} type="number" placeholder="Enter steps" style={{flex:1,background:C.card2,border:`1px solid ${C.border}`,borderRadius:10,padding:"10px 14px",color:C.text,fontSize:14}}/>
+              <SecBtn onClick={()=>{if(manualSteps){setSteps(s=>s+ +manualSteps);setManualSteps("");setShowStepInput(false);}}} color={C.green} style={{padding:"0 16px"}}>Add</SecBtn>
+              <SecBtn onClick={()=>setShowStepInput(false)} style={{padding:"0 12px"}}>✕</SecBtn>
+            </div>:<div style={{display:"flex",gap:6}}>
+              <SecBtn onClick={()=>setSteps(s=>s+1000)} color={C.green} style={{padding:"6px 14px",fontSize:11}}>+1000</SecBtn>
+              <SecBtn onClick={()=>setSteps(s=>s+2500)} color={C.green} style={{padding:"6px 14px",fontSize:11}}>+2500</SecBtn>
+              <SecBtn onClick={()=>setShowStepInput(true)} color={C.accent} style={{padding:"6px 14px",fontSize:11}}>Custom</SecBtn>
+            </div>}
+          </div>
+
+          {/* Fitness Tracker / Workout Logger */}
+          <div style={{padding:"12px 0",borderBottom:`1px solid ${C.border}`}}>
+            <div style={{display:"flex",gap:12,alignItems:"center",marginBottom:8}}>
+              <div style={{fontSize:20}}>🏋️</div>
+              <div style={{flex:1}}>
+                <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:2}}>
+                  <div style={{fontWeight:600,fontSize:13}}>Workout Logger</div>
+                  <Pill color={C.green} sm>Active</Pill>
+                </div>
+                <div style={{fontSize:11,color:C.muted2}}>Log calories burned from exercise</div>
+              </div>
+            </div>
+            {showWorkout?<div style={{display:"flex",gap:8}}>
+              <input value={workoutCals} onChange={e=>setWC(e.target.value)} type="number" placeholder="Calories burned" style={{flex:1,background:C.card2,border:`1px solid ${C.border}`,borderRadius:10,padding:"10px 14px",color:C.text,fontSize:14}}/>
+              <SecBtn onClick={()=>{if(workoutCals){addFood({name:`Workout (-${workoutCals}kcal)`,calories:-Math.abs(+workoutCals),protein:0,carbs:0,fat:0,fibre:0,sodium:0,sugar:0,isProcessed:false,image:null});setWC("");setShowWorkout(false);}}} color={C.green} style={{padding:"0 16px"}}>Log</SecBtn>
+              <SecBtn onClick={()=>setShowWorkout(false)} style={{padding:"0 12px"}}>✕</SecBtn>
+            </div>:<div style={{display:"flex",gap:6}}>
+              <SecBtn onClick={()=>setShowWorkout(true)} color={C.accent} style={{padding:"6px 14px",fontSize:11}}>Log Workout</SecBtn>
+            </div>}
+          </div>
+
+          {/* Export Data */}
+          <div style={{padding:"12px 0",borderBottom:`1px solid ${C.border}`}}>
+            <div style={{display:"flex",gap:12,alignItems:"center",marginBottom:8}}>
+              <div style={{fontSize:20}}>📤</div>
+              <div style={{flex:1}}>
+                <div style={{fontWeight:600,fontSize:13,marginBottom:2}}>Export Data</div>
+                <div style={{fontSize:11,color:C.muted2}}>Download your food log, weight, and mood data</div>
+              </div>
+            </div>
+            <SecBtn onClick={()=>{
+              const data={profile,foodLog,weights,moodLog,goals,steps,water,fast};
+              const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});
+              const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=`nourish_export_${todayStr()}.json`;a.click();
+            }} color={C.accent} style={{padding:"6px 14px",fontSize:11}}>Download JSON</SecBtn>
+          </div>
+
+          {/* Google Fit / Apple Health */}
+          <div style={{padding:"12px 0"}}>
+            <div style={{display:"flex",gap:12,alignItems:"center"}}>
+              <div style={{fontSize:20}}>📱</div>
+              <div style={{flex:1}}>
+                <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:2}}>
+                  <div style={{fontWeight:600,fontSize:13}}>Google Fit / Apple Health</div>
+                  <Pill color={C.muted2} sm>Native only</Pill>
+                </div>
+                <div style={{fontSize:11,color:C.muted2,lineHeight:1.5}}>Direct sync requires a native app. Use Export Data above to manually transfer your data.</div>
+              </div>
+            </div>
+          </div>
         </Card>
 
         {moodLog.length>0&&<Card>
@@ -1063,13 +1134,60 @@ export default function App() {
 
         <Card>
           <Label>Your Profile</Label>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:12}}>
-            {[["Nationality",profile?.nationality||"—"],["Goal",profile?.goal||"—"],["Schedule",profile?.schedule||"—"],["Cuisine DB",cuisine.label],["Cal target",`${goalCal} kcal`],["Water",`${goals.water||8} gl`]].map(([k,v])=><div key={k} style={{background:C.card2,borderRadius:10,padding:"10px 12px",border:`1px solid ${C.border}`}}>
-              <div style={{fontSize:9,color:C.muted2,fontFamily:"'DM Mono',monospace",marginBottom:2}}>{k.toUpperCase()}</div>
-              <div style={{fontSize:13,fontWeight:600,textTransform:"capitalize"}}>{v}</div>
-            </div>)}
-          </div>
-          <SecBtn onClick={()=>{sv("profile",null);setHP(false);setPro(null);}} style={{width:"100%",textAlign:"center"}}>Reset profile & onboarding</SecBtn>
+          {!editProfile?<>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:12}}>
+              {[["Name",profile?.name||"—"],["Nationality",profile?.nationality||"—"],["Goal",profile?.goal||"—"],["Schedule",profile?.schedule||"—"],["Cuisine DB",defaultCuisine.label],["Activity",profile?.activityLevel||"—"],["Weight",`${profile?.weight||"—"} ${wUnit}`],["Height",`${profile?.height||"—"} ${profile?.heightUnit||"cm"}`],["Cal target",`${goalCal} kcal`],["Water",`${goals.water||8} gl`]].map(([k,v])=><div key={k} style={{background:C.card2,borderRadius:10,padding:"10px 12px",border:`1px solid ${C.border}`}}>
+                <div style={{fontSize:9,color:C.muted2,fontFamily:"'DM Mono',monospace",marginBottom:2}}>{k.toUpperCase()}</div>
+                <div style={{fontSize:13,fontWeight:600,textTransform:"capitalize"}}>{v}</div>
+              </div>)}
+            </div>
+            <SecBtn onClick={()=>{setEP(true);setED({...profile});}} color={C.accent} style={{width:"100%",textAlign:"center"}}>Edit Profile</SecBtn>
+          </>:<>
+            <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:14}}>
+              {[["name","Name","text"],["nationality","Nationality","text"],["weight","Weight","number"],["height","Height (cm)","number"]].map(([key,label,type])=><div key={key}>
+                <div style={{fontSize:10,color:C.muted2,fontFamily:"'DM Mono',monospace",marginBottom:3}}>{label.toUpperCase()}</div>
+                <input value={editData?.[key]||""} onChange={e=>setED(d=>({...d,[key]:e.target.value}))} type={type} style={{width:"100%",background:C.card2,border:`1px solid ${C.border}`,borderRadius:10,padding:"10px 14px",color:C.text,fontSize:14}}/>
+              </div>)}
+              <div>
+                <div style={{fontSize:10,color:C.muted2,fontFamily:"'DM Mono',monospace",marginBottom:3}}>GOAL</div>
+                <div style={{display:"flex",gap:6}}>
+                  {["lose","maintain","gain"].map(g=><button key={g} onClick={()=>setED(d=>({...d,goal:g}))} style={{flex:1,background:editData?.goal===g?C.white:C.card2,color:editData?.goal===g?"#000":C.muted2,border:`1px solid ${editData?.goal===g?C.white:C.border}`,borderRadius:10,padding:"8px 0",fontSize:12,fontWeight:700,textTransform:"capitalize"}}>{g}</button>)}
+                </div>
+              </div>
+              <div>
+                <div style={{fontSize:10,color:C.muted2,fontFamily:"'DM Mono',monospace",marginBottom:3}}>ACTIVITY</div>
+                <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+                  {[["sedentary","Sedentary"],["light","Light"],["moderate","Moderate"],["active","Active"],["very_active","Very Active"]].map(([v,l])=><button key={v} onClick={()=>setED(d=>({...d,activityLevel:v}))} style={{background:editData?.activityLevel===v?C.white:C.card2,color:editData?.activityLevel===v?"#000":C.muted2,border:`1px solid ${editData?.activityLevel===v?C.white:C.border}`,borderRadius:99,padding:"5px 10px",fontSize:11,fontWeight:700}}>{l}</button>)}
+                </div>
+              </div>
+              <div>
+                <div style={{fontSize:10,color:C.muted2,fontFamily:"'DM Mono',monospace",marginBottom:3}}>SCHEDULE</div>
+                <div style={{display:"flex",gap:6}}>
+                  {[["shifts","Shifts"],["nine5","9-5"],["freelance","Freelance"]].map(([v,l])=><button key={v} onClick={()=>setED(d=>({...d,schedule:v}))} style={{flex:1,background:editData?.schedule===v?C.accent+"33":C.card2,color:editData?.schedule===v?C.accent:C.muted2,border:`1px solid ${editData?.schedule===v?C.accent:C.border}`,borderRadius:10,padding:"8px 0",fontSize:12,fontWeight:700}}>{l}</button>)}
+                </div>
+              </div>
+              <div>
+                <div style={{fontSize:10,color:C.muted2,fontFamily:"'DM Mono',monospace",marginBottom:3}}>WEIGHT UNIT</div>
+                <div style={{display:"flex",gap:6}}>
+                  {["kg","lbs"].map(u=><button key={u} onClick={()=>setED(d=>({...d,weightUnit:u}))} style={{flex:1,background:editData?.weightUnit===u?C.white:C.card2,color:editData?.weightUnit===u?"#000":C.muted2,border:`1px solid ${editData?.weightUnit===u?C.white:C.border}`,borderRadius:10,padding:"8px 0",fontSize:13,fontWeight:700}}>{u}</button>)}
+                </div>
+              </div>
+            </div>
+            <div style={{display:"flex",gap:8}}>
+              <PrimaryBtn onClick={()=>{
+                const cuisineK=NATIONALITY_TO_CUISINE[editData.nationality]||profile.cuisineKey||"nigerian";
+                const updated={...profile,...editData,cuisineKey:cuisineK};
+                const r=calcTDEE(updated);
+                updated.calorieGoal=r.targetCals;
+                updated.macros=r;
+                sv("profile",updated);setPro(updated);
+                const g={...goals,calories:r.targetCals,protein:r.protein,fat:r.fat,carbs:r.carbs};
+                setGoals(g);sv("goals",g);
+                setEP(false);setED(null);
+              }} style={{flex:1}}>Save Changes</PrimaryBtn>
+              <SecBtn onClick={()=>{setEP(false);setED(null);}} style={{padding:"0 20px"}}>Cancel</SecBtn>
+            </div>
+          </>}
         </Card>
       </>}
 
