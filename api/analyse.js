@@ -29,7 +29,7 @@ export default async function handler(req, res) {
     );
 
     // Pick model: vision model for images, fast model for text
-    const model = hasImage ? "llama-3.2-11b-vision-preview" : "llama-3.3-70b-versatile";
+    const model = hasImage ? "meta-llama/llama-4-scout-17b-16e-instruct" : "llama-3.3-70b-versatile";
 
     // Convert Anthropic-style messages to OpenAI/Groq format
     const groqMessages = messages.map((msg) => {
