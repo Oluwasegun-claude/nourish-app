@@ -249,22 +249,11 @@ function MacroGrid({goals,profile}) {
   </div>;
 }
 
-// ─── SCROLL DATE PICKER ───────────────────────────────────────────────────────
-function ScrollPicker({items,value,onChange}) {
-  const ref=useRef();
-  const idx=items.indexOf(value);
-  useEffect(()=>{
-    if(ref.current) ref.current.scrollTop=(idx>0?idx-2:0)*44;
-  },[]);
-  return <div ref={ref} style={{height:220,overflowY:"auto",scrollSnapType:"y mandatory",position:"relative"}} onScroll={e=>{
-    const i=Math.round(e.target.scrollTop/44)+2;
-    if(items[i]) onChange(items[i]);
-  }}>
-    <div style={{height:88}}/>
-    {items.map((item,i)=><div key={i} style={{height:44,display:"flex",alignItems:"center",justifyContent:"center",scrollSnapAlign:"center",fontSize:i===idx?22:16,fontWeight:i===idx?700:400,color:i===idx?C.white:C.muted,transition:"all .2s"}}>{item}</div>)}
-    <div style={{height:88}}/>
-    <div style={{position:"sticky",bottom:88,left:0,right:0,height:44,border:`1px solid ${C.border}`,borderRadius:8,pointerEvents:"none",marginTop:-132}}/>
-  </div>;
+// ─── DATE SELECT PICKER ───────────────────────────────────────────────────────
+function SelectPicker({items,value,onChange,label}) {
+  return <select value={value} onChange={e=>onChange(e.target.value)} style={{width:"100%",background:C.card2,border:`1px solid ${C.border}`,borderRadius:12,padding:"14px 12px",color:C.white,fontSize:16,fontWeight:600,fontFamily:"'DM Sans',sans-serif",appearance:"none",WebkitAppearance:"none",backgroundImage:`url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23999' d='M6 8L1 3h10z'/%3E%3C/svg%3E")`,backgroundRepeat:"no-repeat",backgroundPosition:"right 12px center"}}>
+    {items.map(item=><option key={item} value={item} style={{background:"#1a1a1a",color:"#fff"}}>{item}</option>)}
+  </select>;
 }
 
 // ─── STEPS TRACKER ───────────────────────────────────────────────────────────
@@ -416,9 +405,9 @@ function Onboarding({onDone}) {
       <div style={{height:4,background:C.border,borderRadius:99,marginBottom:28}}><div style={{width:"35%",height:"100%",background:C.white,borderRadius:99}}/></div>
       <Big style={{fontSize:36,marginBottom:28}}>When were<br/>you born?</Big>
       <div style={{display:"flex",gap:12,flex:1}}>
-        <div style={{flex:1.4}}><Label>Month</Label><ScrollPicker items={MONTHS} value={p.dobMonth} onChange={set("dobMonth")}/></div>
-        <div style={{flex:1}}><Label>Day</Label><ScrollPicker items={DAYS} value={p.dobDay} onChange={set("dobDay")}/></div>
-        <div style={{flex:1.4}}><Label>Year</Label><ScrollPicker items={YEARS} value={p.dobYear} onChange={set("dobYear")}/></div>
+        <div style={{flex:1.4}}><Label>Month</Label><SelectPicker items={MONTHS} value={p.dobMonth} onChange={set("dobMonth")}/></div>
+        <div style={{flex:1}}><Label>Day</Label><SelectPicker items={DAYS} value={p.dobDay} onChange={set("dobDay")}/></div>
+        <div style={{flex:1.4}}><Label>Year</Label><SelectPicker items={YEARS} value={p.dobYear} onChange={set("dobYear")}/></div>
       </div>
       <div style={{marginTop:16}}><PrimaryBtn onClick={()=>setScreen("basics")}>Next</PrimaryBtn></div>
     </div>}
