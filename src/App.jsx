@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { auth, db, googleProvider } from "./firebase";
 import { signInWithPopup, signOut, onAuthStateChanged } from "firebase/auth";
 import { doc, setDoc, getDoc } from "firebase/firestore";
+import { Analytics } from "@vercel/analytics/react";
 
 // ─── STORAGE ──────────────────────────────────────────────────────────────────
 const sv = (k,v) => { try { localStorage.setItem("n4_"+k, JSON.stringify(v)); } catch {} };
@@ -1284,5 +1285,6 @@ export default function App() {
       </>}
 
     </div>
+    <Analytics />
   </div>;
 }
