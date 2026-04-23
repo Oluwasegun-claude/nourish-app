@@ -1,8 +1,14 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { auth, db, googleProvider } from "./firebase";
+import { signInWithPopup, signOut, onAuthStateChanged } from "firebase/auth";
+import { doc, setDoc, getDoc } from "firebase/firestore";
 
 // ─── STORAGE ──────────────────────────────────────────────────────────────────
 const sv = (k,v) => { try { localStorage.setItem("n4_"+k, JSON.stringify(v)); } catch {} };
 const ld = (k,d) => { try { const v=localStorage.getItem("n4_"+k); return v?JSON.parse(v):d; } catch { return d; } };
+// Cloud save/load helpers
+const cloudSave = async (userId, key, value) => { try { await setDoc(doc(db, "users", userId, "data", key), { value, updatedAt: Date.now() }, { merge: true }); } catch(e) { console.log("Cloud save error:", e); } };
+const cloudLoad = async (userId, key, fallback) => { try { const snap = await getDoc(doc(db, "users", userId, "data", key)); return snap.exists() ? snap.data().value : fallback; } catch { return fallback; } };
 const todayStr = () => new Date().toISOString().slice(0,10);
 const timeStr  = () => new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"});
 const fmtT = s => `${String(Math.floor(s/3600)).padStart(2,"0")}:${String(Math.floor((s%3600)/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`;
@@ -560,6 +566,20 @@ const MOODS=["😫","😔","😐","🙂","😄"];
 const HUNGER_L=["Not hungry","A little","Moderate","Hungry","Very hungry"];
 
 export default function App() {
+  // ── AUTH STATE ─────────────────────────────────────────────────────────
+  const [user,setUser]=useState(null);
+  const [authLoading,setAuthLoading]=useState(true);
+  const [authScreen,setAuthScreen]=useState(false);
+  const uid=user?.uid||null;
+
+  useEffect(()=>{
+    const unsub=onAuthStateChanged(auth,u=>{setUser(u);setAuthLoading(false);});
+    return unsub;
+  },[]);
+
+  // Cloud sync helper — saves to both localStorage and Firestore
+  const save=(key,value)=>{ sv(key,value); if(uid) cloudSave(uid,key,value); };
+
   const [hasProfile,setHP]=useState(()=>!!ld("profile",null));
   const [profile,setPro]=useState(()=>ld("profile",null));
   const [tab,setTab]=useState("home");
@@ -572,6 +592,31 @@ export default function App() {
   const [goals,setGoals]=useState(()=>ld("goals",{...DEFAULT_GOALS}));
   const [steps,setSteps]=useState(()=>ld("steps_"+todayStr(),0));
   const [now,setNow]=useState(new Date());
+
+  // ── LOAD FROM CLOUD ON LOGIN ─────────────────────────────────────────
+  const [cloudLoaded,setCloudLoaded]=useState(false);
+  useEffect(()=>{
+    if(!uid||cloudLoaded)return;
+    (async()=>{
+      const cp=await cloudLoad(uid,"profile",null);
+      if(cp){setPro(cp);setHP(true);sv("profile",cp);}
+      const cg=await cloudLoad(uid,"goals",null);
+      if(cg){setGoals(cg);sv("goals",cg);}
+      const cl=await cloudLoad(uid,"log_"+todayStr(),null);
+      if(cl){setFL(cl);sv("log_"+todayStr(),cl);}
+      const cw=await cloudLoad(uid,"water_"+todayStr(),null);
+      if(cw!==null){setWater(cw);sv("water_"+todayStr(),cw);}
+      const cf=await cloudLoad(uid,"fast",null);
+      if(cf){setFast(cf);sv("fast",cf);}
+      const cm=await cloudLoad(uid,"moods",null);
+      if(cm){setML(cm);sv("moods",cm);}
+      const cwt=await cloudLoad(uid,"weights",null);
+      if(cwt){setWts(cwt);sv("weights",cwt);}
+      const cs=await cloudLoad(uid,"steps_"+todayStr(),null);
+      if(cs!==null){setSteps(cs);sv("steps_"+todayStr(),cs);}
+      setCloudLoaded(true);
+    })();
+  },[uid,cloudLoaded]);
 
   // overlays
   const [badDay,setBD]=useState(false);
@@ -607,13 +652,13 @@ export default function App() {
   const [coachLoad,setCL]=useState(false);
   const fileRef=useRef();
 
-  useEffect(()=>sv("log_"+todayStr(),foodLog),[foodLog]);
-  useEffect(()=>sv("water_"+todayStr(),water),[water]);
-  useEffect(()=>sv("fast",fast),[fast]);
-  useEffect(()=>sv("moods",moodLog),[moodLog]);
-  useEffect(()=>sv("weights",weights),[weights]);
-  useEffect(()=>sv("goals",goals),[goals]);
-  useEffect(()=>sv("steps_"+todayStr(),steps),[steps]);
+  useEffect(()=>save("log_"+todayStr(),foodLog),[foodLog]);
+  useEffect(()=>save("water_"+todayStr(),water),[water]);
+  useEffect(()=>save("fast",fast),[fast]);
+  useEffect(()=>save("moods",moodLog),[moodLog]);
+  useEffect(()=>save("weights",weights),[weights]);
+  useEffect(()=>save("goals",goals),[goals]);
+  useEffect(()=>save("steps_"+todayStr(),steps),[steps]);
   useEffect(()=>{const t=setInterval(()=>setNow(new Date()),1000);return()=>clearInterval(t);},[]);
   useEffect(()=>{
     if(!fast.active||!fast.start)return;
@@ -711,10 +756,31 @@ export default function App() {
     habit:{title:"Habit",color:C.yellow,action:"Notice the trigger — then decide.",options:[{l:"Wait 10 minutes",a:null},{l:"Drink water first",a:null},{l:"Small planned snack",a:null}]},
   };
 
+  // ── AUTH LOADING ────────────────────────────────────────────────────────
+  if(authLoading) return <div style={{minHeight:"100vh",background:C.bg,display:"flex",alignItems:"center",justifyContent:"center"}}>
+    <style>{CSS}</style>
+    <div style={{textAlign:"center"}}>
+      <div style={{fontSize:32,animation:"spin 1s linear infinite",display:"inline-block",marginBottom:12}}>🌱</div>
+      <div style={{fontSize:13,color:C.muted2}}>Loading Nourish...</div>
+    </div>
+  </div>;
+
+  // ── LOGIN SCREEN ───────────────────────────────────────────────────────
+  if(!user&&authScreen) return <div style={{minHeight:"100vh",background:C.bg,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:24}}>
+    <style>{CSS}</style>
+    <Big style={{fontSize:48,marginBottom:8,textAlign:"center"}}>Sign in to<br/><span style={{color:C.green}}>sync your data</span></Big>
+    <div style={{fontSize:13,color:C.muted2,marginBottom:32,textAlign:"center",maxWidth:320,lineHeight:1.6}}>Your food logs, weight, moods, and profile — backed up and synced across all your devices.</div>
+    <PrimaryBtn onClick={async()=>{try{await signInWithPopup(auth,googleProvider);}catch(e){console.log("Auth error:",e);}}} style={{maxWidth:360,width:"100%",display:"flex",alignItems:"center",justifyContent:"center",gap:10}}>
+      <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+      Continue with Google
+    </PrimaryBtn>
+    <button onClick={()=>setAuthScreen(false)} style={{background:"none",border:"none",color:C.muted2,marginTop:16,fontSize:13,fontFamily:"'DM Mono',monospace"}}>← Continue without account</button>
+  </div>;
+
   if(!hasProfile) return <Onboarding onDone={p=>{
-    sv("profile",p);setPro(p);setHP(true);
+    save("profile",p);setPro(p);setHP(true);
     const g={...DEFAULT_GOALS,...(p.macros||{}),calories:p.calorieGoal||2000,water:p.waterGoal||8};
-    setGoals(g);sv("goals",g);
+    setGoals(g);save("goals",g);
   }}/>;
 
   // ── OVERLAYS ──────────────────────────────────────────────────────────────
@@ -790,9 +856,12 @@ export default function App() {
 
     {/* Header */}
     <div style={{padding:"18px 18px 12px",borderBottom:`1px solid ${C.border}`,display:"flex",justifyContent:"space-between",alignItems:"center",position:"sticky",top:0,background:C.bg,zIndex:20}}>
-      <div>
-        <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontWeight:900,fontSize:22,letterSpacing:-0.5}}>NOURISH</div>
-        <div style={{fontSize:11,color:C.muted2}}>{now.toLocaleDateString("en-GB",{weekday:"short",day:"numeric",month:"short"})} · {profile?.name}</div>
+      <div style={{display:"flex",alignItems:"center",gap:10}}>
+        {user?.photoURL&&<img src={user.photoURL} alt="" style={{width:28,height:28,borderRadius:"50%",border:`2px solid ${C.green}`}}/>}
+        <div>
+          <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontWeight:900,fontSize:22,letterSpacing:-0.5}}>NOURISH</div>
+          <div style={{fontSize:11,color:C.muted2}}>{now.toLocaleDateString("en-GB",{weekday:"short",day:"numeric",month:"short"})} · {profile?.name}{user?" · ☁️":""}</div>
+        </div>
       </div>
       <div style={{display:"flex",gap:6}}>
         <button onClick={()=>{setCrave(true);setCT(null);}} style={{background:C.grape+"22",border:`1px solid ${C.grape}44`,borderRadius:99,padding:"5px 11px",fontSize:11,color:C.grape,fontWeight:700,fontFamily:"'DM Mono',monospace"}}>craving?</button>
@@ -1180,13 +1249,36 @@ export default function App() {
                 const r=calcTDEE(updated);
                 updated.calorieGoal=r.targetCals;
                 updated.macros=r;
-                sv("profile",updated);setPro(updated);
+                save("profile",updated);setPro(updated);
                 const g={...goals,calories:r.targetCals,protein:r.protein,fat:r.fat,carbs:r.carbs};
-                setGoals(g);sv("goals",g);
+                setGoals(g);save("goals",g);
                 setEP(false);setED(null);
               }} style={{flex:1}}>Save Changes</PrimaryBtn>
               <SecBtn onClick={()=>{setEP(false);setED(null);}} style={{padding:"0 20px"}}>Cancel</SecBtn>
             </div>
+          </>}
+        </Card>
+
+        {/* Account / Cloud Sync */}
+        <Card>
+          <Label>Account & Sync</Label>
+          {user?<>
+            <div style={{display:"flex",gap:12,alignItems:"center",marginBottom:12}}>
+              {user.photoURL&&<img src={user.photoURL} alt="" style={{width:40,height:40,borderRadius:"50%",border:`2px solid ${C.green}`}}/>}
+              <div style={{flex:1}}>
+                <div style={{fontWeight:600,fontSize:13}}>{user.displayName||"Signed in"}</div>
+                <div style={{fontSize:11,color:C.muted2}}>{user.email}</div>
+              </div>
+              <Pill color={C.green} sm>☁️ Synced</Pill>
+            </div>
+            <div style={{fontSize:11,color:C.muted2,marginBottom:12,lineHeight:1.6}}>Your data is backed up to the cloud and syncs across all your devices.</div>
+            <SecBtn onClick={async()=>{try{await signOut(auth);}catch(e){console.log(e);}}} color={C.red} style={{width:"100%",textAlign:"center"}}>Sign Out</SecBtn>
+          </>:<>
+            <div style={{fontSize:13,color:C.muted2,marginBottom:12,lineHeight:1.6}}>Sign in with Google to back up your data and sync across devices. Your current data will be preserved.</div>
+            <PrimaryBtn onClick={()=>setAuthScreen(true)} style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
+              <svg width="16" height="16" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+              Sign in with Google
+            </PrimaryBtn>
           </>}
         </Card>
       </>}
