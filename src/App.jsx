@@ -689,7 +689,7 @@ export default function App() {
   const [voiceText,setVT]=useState("");
   const [logMode,setLM]=useState("photo");
   const [mealType,setMT]=useState("Lunch");
-  const [manual,setMan]=useState({name:"",calories:"",protein:"",carbs:"",fat:"",fibre:""});
+  const [manual,setMan]=useState({name:"",calories:"",protein:"",carbs:"",fat:"",fibre:"",qty:"1"});
   const [nigerSearch,setNS]=useState("");
   const [coachMsg,setCM]=useState("");
   const [coachLoad,setCL]=useState(false);
@@ -735,12 +735,24 @@ export default function App() {
     return res.json();
   };
 
-  const addFood=food=>{
-    const item={...food,id:Date.now(),time:timeStr(),meal:mealType};
+  const addFood=(food, qty=1)=>{
+    const q = parseFloat(qty) || 1;
+    const item={
+      ...food,
+      id:Date.now(),
+      time:timeStr(),
+      meal:mealType,
+      calories: Math.round((food.calories||0) * q),
+      protein: Math.round((food.protein||0) * q),
+      carbs: Math.round((food.carbs||0) * q),
+      fat: Math.round((food.fat||0) * q),
+      fibre: Math.round((food.fibre||0) * q),
+      name: q !== 1 ? `${q}x ${food.name}` : food.name
+    };
     setFL(p=>[...p,item]);
     setPM({id:item.id,step:"before"});
     setUI(null);setUD(null);setAR(null);setAE(null);setVT("");
-    setMan({name:"",calories:"",protein:"",carbs:"",fat:"",fibre:""});
+    setMan({name:"",calories:"",protein:"",carbs:"",fat:"",fibre:"",qty:"1"});
   };
   const delFood=id=>setFL(p=>p.filter(f=>f.id!==id));
 
@@ -1045,23 +1057,44 @@ export default function App() {
           </div>
           <input value={nigerSearch} onChange={e=>setNS(e.target.value)} placeholder={`Search ${cuisine.foods.length} dishes...`} style={{width:"100%",background:C.card2,border:`1px solid ${C.border}`,borderRadius:10,padding:"11px 14px",color:C.text,fontSize:14,marginBottom:10}}/>
           <div style={{maxHeight:420,overflowY:"auto"}}>
-            {nigerFiltered.map(f=><button key={f.name} onClick={()=>addFood({name:f.name,calories:f.cal,protein:f.p,carbs:f.c,fat:f.f,fibre:f.fi,sodium:0,sugar:0,isProcessed:false,image:null})} style={{width:"100%",background:C.card2,border:`1px solid ${C.border}`,borderRadius:10,padding:"12px 14px",marginBottom:6,display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer",color:C.text,textAlign:"left"}}>
-              <div>
+            {nigerFiltered.map(f=><div key={f.name} style={{width:"100%",background:C.card2,border:`1px solid ${C.border}`,borderRadius:10,padding:"12px 14px",marginBottom:6,display:"flex",justifyContent:"space-between",alignItems:"center",color:C.text,textAlign:"left"}}>
+              <div style={{flex:1}}>
                 <div style={{fontWeight:600,fontSize:13,marginBottom:3}}>{f.name}</div>
-                <div style={{display:"flex",gap:4}}><Pill color={C.red} sm>{f.cal}kcal</Pill><Pill color={C.accent} sm>{f.p}g P</Pill><Pill color={C.yellow} sm>{f.c}g C</Pill><Pill color={C.lime} sm>{f.f}g F</Pill></div>
+                <div style={{display:"flex",gap:4}}><Pill color={C.red} sm>{f.cal}kcal</Pill><Pill color={C.accent} sm>{f.p}g P</Pill></div>
               </div>
-              <span style={{color:C.green,fontSize:22,flexShrink:0}}>+</span>
-            </button>)}
+              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                <div style={{display:"flex",alignItems:"center",background:C.card,borderRadius:8,border:`1px solid ${C.border}`,overflow:"hidden"}}>
+                  <button onClick={(e)=>{e.stopPropagation(); const q = prompt("Enter quantity (e.g. 1.5 or 2):", "1"); if(q) addFood({name:f.name,calories:f.cal,protein:f.p,carbs:f.c,fat:f.f,fibre:f.fi,isProcessed:false,image:null}, q);}} style={{background:"none",border:"none",color:C.accent,padding:"8px 12px",fontSize:12,fontWeight:700}}>+ Qty</button>
+                  <div style={{width:1,height:20,background:C.border}}/>
+                  <button onClick={()=>addFood({name:f.name,calories:f.cal,protein:f.p,carbs:f.c,fat:f.f,fibre:f.fi,isProcessed:false,image:null}, 1)} style={{background:"none",border:"none",color:C.green,padding:"8px 12px",fontSize:18,fontWeight:700}}>+</button>
+                </div>
+              </div>
+            </div>)}
           </div>
         </Card>}
 
         {logMode==="manual"&&<Card>
           <Label>Manual Entry</Label>
-          {[{k:"name",l:"Food name",ph:"e.g. "+cuisine.foods[0]?.name,type:"text"},{k:"calories",l:"Calories (kcal)",ph:"450",type:"number"},{k:"protein",l:"Protein (g)",ph:"25",type:"number"},{k:"carbs",l:"Carbs (g)",ph:"60",type:"number"},{k:"fat",l:"Fat (g)",ph:"12",type:"number"},{k:"fibre",l:"Fibre (g)",ph:"4",type:"number"}].map(({k,l,ph,type})=><div key={k} style={{marginBottom:10}}>
-            <Label>{l}</Label>
-            <input value={manual[k]} onChange={e=>setMan(p=>({...p,[k]:e.target.value}))} type={type} placeholder={ph} style={{width:"100%",background:C.card2,border:`1px solid ${C.border}`,borderRadius:10,padding:"12px 14px",color:C.text,fontSize:14}}/>
-          </div>)}
-          <PrimaryBtn onClick={()=>{if(!manual.name||!manual.calories)return;addFood({name:manual.name,calories:+manual.calories||0,protein:+manual.protein||0,carbs:+manual.carbs||0,fat:+manual.fat||0,fibre:+manual.fibre||0,sodium:0,sugar:0,image:null,isProcessed:false});}}>Add to Log</PrimaryBtn>
+          <div style={{display:"grid",gridTemplateColumns:"2fr 1fr",gap:10,marginBottom:10}}>
+            <div>
+              <Label>Food name</Label>
+              <input value={manual.name} onChange={e=>setMan(p=>({...p,name:e.target.value}))} placeholder="e.g. Tea" style={{width:"100%",background:C.card2,border:`1px solid ${C.border}`,borderRadius:10,padding:"12px 14px",color:C.text,fontSize:14}}/>
+            </div>
+            <div>
+              <Label>Quantity</Label>
+              <input value={manual.qty} onChange={e=>setMan(p=>({...p,qty:e.target.value}))} type="number" step="0.5" placeholder="1" style={{width:"100%",background:C.card2,border:`1px solid ${C.border}`,borderRadius:10,padding:"12px 14px",color:C.text,fontSize:14,fontWeight:700}}/>
+            </div>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:12}}>
+            {[{k:"calories",l:"Calories"},{k:"protein",l:"Protein"},{k:"carbs",l:"Carbs"},{k:"fat",l:"Fat"},{k:"fibre",l:"Fibre"}].map(({k,l})=><div key={k}>
+              <Label style={{fontSize:9}}>{l}</Label>
+              <input value={manual[k]} onChange={e=>setMan(p=>({...p,[k]:e.target.value}))} type="number" placeholder="0" style={{width:"100%",background:C.card2,border:`1px solid ${C.border}`,borderRadius:10,padding:"10px 8px",color:C.text,fontSize:13,textAlign:"center"}}/>
+            </div>)}
+          </div>
+          <PrimaryBtn onClick={()=>{
+            if(!manual.name||!manual.calories)return;
+            addFood({name:manual.name,calories:+manual.calories||0,protein:+manual.protein||0,carbs:+manual.carbs||0,fat:+manual.fat||0,fibre:+manual.fibre||0,sodium:0,sugar:0,image:null,isProcessed:false}, manual.qty);
+          }}>Add to Log</PrimaryBtn>
         </Card>}
       </>}
 
