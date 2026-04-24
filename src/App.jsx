@@ -9,6 +9,24 @@ const ld = (k,d) => { try { const v=localStorage.getItem("n4_"+k); return v?JSON
 // Cloud save/load helpers
 const cloudSave = async (userId, key, value) => { try { await setDoc(doc(db, "users", userId, "data", key), { value, updatedAt: Date.now() }, { merge: true }); } catch(e) { console.log("Cloud save error:", e); } };
 const cloudLoad = async (userId, key, fallback) => { try { const snap = await getDoc(doc(db, "users", userId, "data", key)); return snap.exists() ? snap.data().value : fallback; } catch { return fallback; } };
+
+const migrate = () => {
+  const keys = ["profile", "goals", "weights", "moods", "fast"];
+  keys.forEach(k => {
+    const old = localStorage.getItem("n_"+k);
+    if (old && !localStorage.getItem("n4_"+k)) localStorage.setItem("n4_"+k, old);
+  });
+  for(let i=0; i<30; i++) {
+    const d = new Date(); d.setDate(d.getDate()-i);
+    const s = d.toISOString().slice(0,10);
+    ["log_", "water_", "steps_"].forEach(p => {
+      const old = localStorage.getItem("n_"+p+s);
+      if (old && !localStorage.getItem("n4_"+p+s)) localStorage.setItem("n4_"+p+s, old);
+    });
+  }
+};
+migrate();
+
 const todayStr = () => new Date().toISOString().slice(0,10);
 const timeStr  = () => new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"});
 const fmtT = s => `${String(Math.floor(s/3600)).padStart(2,"0")}:${String(Math.floor((s%3600)/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`;
@@ -368,7 +386,25 @@ function Onboarding({onDone}) {
       <Big style={{fontSize:52,marginBottom:8}}>Driven by<br/>science.<br/><span style={{color:C.accent}}>Built for<br/>your life.</span></Big>
       <div style={{fontSize:15,color:C.muted2,marginBottom:40,marginTop:8,lineHeight:1.6}}>AI nutrition tracking built around who you actually are — your culture, your shifts, your goals.</div>
       <PrimaryBtn onClick={()=>setScreen("privacy")}>Get Started</PrimaryBtn>
-      <div style={{textAlign:"center",marginTop:12,fontSize:12,color:C.muted2}}>Already set up? <span style={{color:C.accent,cursor:"pointer"}} onClick={()=>setScreen("sex")}>Continue →</span></div>
+      <div style={{textAlign:"center",marginTop:12,fontSize:12,color:C.muted2}}>Already set up? <span style={{color:C.accent,cursor:"pointer"}} onClick={()=>setScreen("restore")}>Restore data →</span></div>
+    </div>}
+
+    {screen==="restore" && <div style={{flex:1,display:"flex",flexDirection:"column",padding:24}}>
+      <Big style={{fontSize:42,marginBottom:12}}>Restore<br/>your<br/><span style={{color:C.accent}}>data.</span></Big>
+      <div style={{fontSize:14,color:C.muted2,marginBottom:32,lineHeight:1.7}}>Paste your backup code or sign in with Google later to restore your logs.</div>
+      <textarea 
+        placeholder="Paste your sync code here..." 
+        style={{width:"100%",height:200,background:C.card2,border:`1px solid ${C.border}`,borderRadius:12,padding:16,color:C.text,fontSize:12,fontFamily:"'DM Mono',monospace",resize:"none"}}
+        onInput={e=>{
+          try {
+            const data = JSON.parse(atob(e.target.value));
+            Object.keys(data).forEach(k => localStorage.setItem(k, JSON.stringify(data[k])));
+            window.location.reload();
+          } catch {}
+        }}
+      />
+      <div style={{flex:1}}/>
+      <SecBtn onClick={()=>setScreen("welcome")}>← Back</SecBtn>
     </div>}
 
     {screen==="privacy" && <div style={{flex:1,display:"flex",flexDirection:"column",padding:24}}>
@@ -1135,10 +1171,20 @@ export default function App() {
               </div>
             </div>
             <SecBtn onClick={()=>{
-              const data={profile,foodLog,weights,moodLog,goals,steps,water,fast};
-              const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});
-              const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=`nourish_export_${todayStr()}.json`;a.click();
-            }} color={C.accent} style={{padding:"6px 14px",fontSize:11}}>Download JSON</SecBtn>
+            const data={profile,foodLog,weights,moodLog,goals,steps,water,fast};
+            const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});
+            const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=`nourish_export_${todayStr()}.json`;a.click();
+          }} color={C.accent} style={{padding:"6px 14px",fontSize:11,marginRight:8}}>Download JSON</SecBtn>
+          <SecBtn onClick={()=>{
+            const data = {};
+            for(let i=0; i<localStorage.length; i++){
+              const k = localStorage.key(i);
+              if(k.startsWith("n4_")) data[k] = JSON.parse(localStorage.getItem(k));
+            }
+            const code = btoa(JSON.stringify(data));
+            navigator.clipboard.writeText(code);
+            alert("Sync code copied! Save this code to restore your data on any device.");
+          }} color={C.accent} style={{padding:"6px 14px",fontSize:11}}>Copy Sync Code</SecBtn>
           </div>
 
           {/* Google Fit / Apple Health */}
